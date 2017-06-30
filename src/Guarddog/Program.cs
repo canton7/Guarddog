@@ -1,4 +1,5 @@
-﻿using IrcSays.Communication.Irc;
+﻿using Guarddog.IrcClient;
+using IrcSays.Communication.Irc;
 using System;
 
 namespace Guarddog
@@ -7,12 +8,24 @@ namespace Guarddog
     {
         static void Main(string[] args)
         {
-            using (var session = new IrcSession())
+            var clientConfig = new ClientConfig()
             {
-                session.Open("chat.freenode.net", 6697, false, "guarddog-bot", "guarddog-bot", "guarddog-bot", true);
+                Server = "chat.freenode.net",
+                Port = 6697,
+                IsSecure = true,
+                Nickname = "guarddog-test",
+                RealName = "guarddog-test",
+                Username = "guarddog-test",
+                Channels = { "#botwar" },
+            };
+
+            using (var client = new Client(clientConfig))
+            {
+                client.Open();
 
                 Console.ReadLine();
             }
+
 
             Console.WriteLine("Hello World!");
         }

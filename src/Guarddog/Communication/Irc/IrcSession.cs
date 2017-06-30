@@ -24,7 +24,7 @@ namespace IrcSays.Communication.Irc
 		private bool _isInvisible;
 		private readonly IrcConnection _conn;
 		private IrcSessionState _state;
-		private List<IrcCodeHandler> _captures;
+        private readonly List<IrcCodeHandler> _captures = new List<IrcCodeHandler>();
 		private bool _isWaitingForActivity;
 		private bool _findExternalAddress;
 		private readonly SynchronizationContext _syncContext;
@@ -238,7 +238,44 @@ namespace IrcSays.Communication.Irc
 			_conn.MessageReceived += MessageReceivedHandler;
 			_conn.MessageSent += MessageSentHandler;
 			_conn.Error += ConnectionErrorHandler;
-		}
+
+            AddHandler(new IrcCodeHandler(e =>
+            {
+                e.Handled = true;
+                if (e.Message.Parameters.Count < 2)
+                {
+                    return true;
+                }
+
+                var parts = e.Message.Parameters[1].Split('@');
+                if (parts.Length > 1)
+                {
+                    if (!IPAddress.TryParse(parts[1], out IPAddress external))
+                    {
+                        async void Lookup()
+                        {
+                            try
+                            {
+                                var host = await Dns.GetHostEntryAsync(parts[1]);
+                                if (host.AddressList.Length > 0)
+                                {
+                                    ExternalAddress = host.AddressList[0];
+                                }
+                            }
+                            catch
+                            {
+                            }
+                        }
+                        Lookup();
+                    }
+                    else
+                    {
+                        ExternalAddress = external;
+                    }
+                }
+                return true;
+            }, IrcCode.RplUserHost));
+        }
 
 		/// <summary>
 		///     Opens the IRC session and attempts to connect to a server.
@@ -279,7 +316,6 @@ namespace IrcSays.Communication.Irc
 			AutoReconnect = autoReconnect;
 			Proxy = proxy;
 
-			_captures = new List<IrcCodeHandler>();
 			_conn.Open(server, port, isSecure, Proxy);
 			State = IrcSessionState.Connecting;
 		}
@@ -748,36 +784,6 @@ namespace IrcSays.Communication.Irc
 		{
 			if (State == IrcSessionState.Connected && _findExternalAddress)
 			{
-				AddHandler(new IrcCodeHandler(e =>
-				{
-					e.Handled = true;
-					if (e.Message.Parameters.Count < 2)
-					{
-						return true;
-					}
-
-					var parts = e.Message.Parameters[1].Split('@');
-					if (parts.Length > 1)
-					{
-                        if (!IPAddress.TryParse(parts[1], out IPAddress external))
-                        {
-                            async void Lookup()
-                            {
-                                var host = await Dns.GetHostEntryAsync(parts[1]);
-                                if (host.AddressList.Length > 0)
-                                {
-                                    ExternalAddress = host.AddressList[0];
-                                }
-                            }
-                            Lookup();
-                        }
-                        else
-                        {
-                            ExternalAddress = external;
-                        }
-                    }
-					return true;
-				}, IrcCode.RplUserHost));
 				UserHost(Nickname);
 			}
 
@@ -1089,5 +1095,5 @@ namespace IrcSays.Communication.Irc
 				Send("PING", Server);
 			}
 		}
-	}
+    }
 }
