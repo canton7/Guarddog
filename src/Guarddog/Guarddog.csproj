@@ -5,4 +5,9 @@
     <TargetFramework>netcoreapp1.1</TargetFramework>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SQLite" Version="1.1.1" />
+    <PackageReference Include="Simple.Migrations" Version="0.9.10" />
+  </ItemGroup>
+
 </Project>
