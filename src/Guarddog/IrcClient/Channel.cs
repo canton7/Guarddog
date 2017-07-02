@@ -9,6 +9,8 @@ namespace Guarddog.IrcClient
     public class Channel
     {
         private readonly IrcSession session;
+        private readonly ClientConfig clientConfig;
+        private readonly bool permanentlyOp;
 
         public string Name { get; }
         public bool IsJoined { get; private set; }
@@ -16,10 +18,12 @@ namespace Guarddog.IrcClient
         private List<UserBan> wipBanList = new List<UserBan>();
         public IReadOnlyList<UserBan> BanList { get; private set; } = new List<UserBan>();
 
-        internal Channel(string name, IrcSession session)
+        internal Channel(string name, IrcSession session, ClientConfig clientConfig, ChannelConfig channelConfig)
         {
             this.Name = name ?? throw new ArgumentNullException(nameof(name));
             this.session = session ?? throw new ArgumentNullException(nameof(session));
+            this.clientConfig = clientConfig ?? throw new ArgumentNullException(nameof(clientConfig));
+            this.permanentlyOp = channelConfig.PermanentlyOp ?? clientConfig.PermanentlyOp;
 
             this.session.SelfJoined += (o, e) =>
             {
@@ -115,6 +119,10 @@ namespace Guarddog.IrcClient
         {
             this.session.Mode(this.Name, "+b");
             this.session.Mode(this.Name, "+q");
+            if (!string.IsNullOrWhiteSpace(this.clientConfig.ChanServServicesName) && this.permanentlyOp)
+            {
+                this.session.PrivateMessage(new IrcTarget(this.clientConfig.ChanServServicesName), $"OP {this.Name}");
+            }
         }
     }
 }

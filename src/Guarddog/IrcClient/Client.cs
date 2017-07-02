@@ -19,7 +19,8 @@ namespace Guarddog.IrcClient
 
             this.session = new IrcSession();
 
-            this.Channels = this.config.Channels.ToDictionary(x => x, x => new Channel(x, this.session));
+
+            this.Channels = this.config.Channels.ToDictionary(x => x.Name, x => new Channel(x.Name, this.session, this.config, x));
 
             this.session.RawMessageReceived += (o, e) => Console.WriteLine("<< " + e.Message);
             this.session.RawMessageSent += (o, e) => Console.WriteLine(">> " + e.Message);
@@ -34,7 +35,11 @@ namespace Guarddog.IrcClient
                 {
                     foreach (var channel in this.config.Channels)
                     {
-                        this.session.Join(channel);
+                        this.session.Join(channel.Name);
+                    }
+                    if (!string.IsNullOrWhiteSpace(this.config.NickServServicesName) && !string.IsNullOrWhiteSpace(this.config.NickservPassword))
+                    {
+                        this.session.PrivateMessage(new IrcTarget(this.config.NickServServicesName), $"identify {this.config.NickservPassword}");
                     }
                 }
             };

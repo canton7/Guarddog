@@ -33,13 +33,17 @@ namespace Guarddog
 
             var clientConfig = new ClientConfig()
             {
-                Server = "chat.freenode.net",
-                Port = 6697,
-                IsSecure = true,
-                Nickname = "guarddog-test",
-                RealName = "guarddog-test",
-                Username = "guarddog-test",
-                Channels = { "#botwar" },
+                Server = "ircd.antonymale.co.uk",
+                Port = 6667,
+                IsSecure = false,
+                Nickname = "guarddog",
+                RealName = "guarddog",
+                Username = "guarddog",
+                PermanentlyOp = true,
+                Channels = {
+                    new ChannelConfig() { Name = "#test" }
+                },
+                NickservPassword = "nickservpassword",
             };
 
             using (var client = new Client(clientConfig))

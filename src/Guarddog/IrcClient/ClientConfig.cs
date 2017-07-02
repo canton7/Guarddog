@@ -13,6 +13,10 @@ namespace Guarddog.IrcClient
         public string Username { get; set; }
         public string RealName { get; set; }
         public string Password { get; internal set; }
-        public List<string> Channels { get; } = new List<string>();
+        public List<ChannelConfig> Channels { get; } = new List<ChannelConfig>();
+        public string ChanServServicesName { get; set; } = "ChanServ";
+        public string NickServServicesName { get; set; } = "NickServ";
+        public string NickservPassword { get; set; }
+        public bool PermanentlyOp { get; set; }
     }
 }
