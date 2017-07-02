@@ -24,6 +24,7 @@ namespace Guarddog.IrcClient
         public event EventHandler<BanListReloadedEventArgs> BanListReloaded;
         public event EventHandler<BanChangedEventArgs> BanAdded;
         public event EventHandler<BanChangedEventArgs> BanRemoved;
+        public event EventHandler<MessagedEventArgs> Messaged;
 
         internal Channel(string name, Client client, ChannelConfig channelConfig)
         {
@@ -52,6 +53,11 @@ namespace Guarddog.IrcClient
                 {
                     this.IsJoined = false;
                 }
+            };
+            this.session.PrivateMessaged += (o, e) =>
+            {
+                if (e.To.IsChannel && e.To.Name == this.Name)
+                    this.Messaged?.Invoke(this, new MessagedEventArgs(e.From, e.Text));
             };
             this.session.ChannelModeChanged += (o, e) =>
             {

@@ -2,6 +2,7 @@
 using Guarddog.Data.Bans;
 using Guarddog.IrcClient;
 using Guarddog.Modules;
+using Guarddog.Modules.Akick;
 using IrcSays.Communication.Irc;
 using Microsoft.Data.Sqlite;
 using SimpleMigrations;
@@ -44,7 +45,8 @@ namespace Guarddog
                 Username = "guarddog",
                 PermanentlyOp = true,
                 Channels = {
-                    new ChannelConfig() { Name = "#test" }
+                    new ChannelConfig() { Name = "#test" },
+                    new ChannelConfig() { Name = "#admin" },
                 },
                 NickservPassword = "nickservpassword",
             };
@@ -52,7 +54,7 @@ namespace Guarddog
             using (var client = new Client(clientConfig))
             {
                 var banRepository = new BanRepository();
-                var akick = new AkickModule(client, client.Channels["#test"], Array.Empty<Channel>(), banRepository);
+                var akick = new AkickModule(client, client.Channels["#test"], new[] { client.Channels["#admin"] }, banRepository);
 
                 client.Open();
 

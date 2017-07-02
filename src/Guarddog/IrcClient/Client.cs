@@ -15,7 +15,7 @@ namespace Guarddog.IrcClient
 
         public IReadOnlyDictionary<string, Channel> Channels { get; }
 
-        public event EventHandler<PrivateMessagedEventArgs> PrivateMessaged;
+        public event EventHandler<MessagedEventArgs> PrivateMessaged;
 
         public Client(ClientConfig config)
         {
@@ -48,7 +48,8 @@ namespace Guarddog.IrcClient
             };
             this.Session.PrivateMessaged += (o, e) =>
             {
-                this.PrivateMessaged?.Invoke(this, new PrivateMessagedEventArgs(e.From, e.Text));
+                if (!e.To.IsChannel && e.To.Name == this.Config.Nickname)
+                    this.PrivateMessaged?.Invoke(this, new MessagedEventArgs(e.From, e.Text));
             };
             this.Session.AddHandler(new IrcCodeHandler(e =>
             {
