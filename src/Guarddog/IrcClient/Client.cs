@@ -8,51 +8,71 @@ namespace Guarddog.IrcClient
 {
     public class Client : IDisposable
     {
-        private readonly IrcSession session;
-        private readonly ClientConfig config;
+        internal IrcSession Session { get; }
+        internal ClientConfig Config { get; }
+
+        internal string SupportedChannelModes { get; private set; } = string.Empty;
 
         public IReadOnlyDictionary<string, Channel> Channels { get; }
 
+        public event EventHandler<PrivateMessagedEventArgs> PrivateMessaged;
+
         public Client(ClientConfig config)
         {
-            this.config = config ?? throw new ArgumentNullException(nameof(config));
+            this.Config = config ?? throw new ArgumentNullException(nameof(config));
 
-            this.session = new IrcSession();
+            this.Session = new IrcSession();
 
+            this.Channels = this.Config.Channels.ToDictionary(x => x.Name, x => new Channel(x.Name, this, x));
 
-            this.Channels = this.config.Channels.ToDictionary(x => x.Name, x => new Channel(x.Name, this.session, this.config, x));
-
-            this.session.RawMessageReceived += (o, e) => Console.WriteLine("<< " + e.Message);
-            this.session.RawMessageSent += (o, e) => Console.WriteLine(">> " + e.Message);
-            this.session.AddHandler(new IrcCodeHandler(e =>
+            this.Session.RawMessageReceived += (o, e) => Console.WriteLine("<< " + e.Message);
+            this.Session.RawMessageSent += (o, e) => Console.WriteLine(">> " + e.Message);
+            this.Session.AddHandler(new IrcCodeHandler(e =>
             {
-                session.Nick(session.Nickname + "_");
+                Session.Nick(Session.Nickname + "_");
                 return true;
             }, IrcCode.ErrNicknameInUse));
-            this.session.StateChanged += (o, e) =>
+            this.Session.StateChanged += (o, e) =>
             {
-                if (session.State == IrcSessionState.Connected)
+                if (Session.State == IrcSessionState.Connected)
                 {
-                    foreach (var channel in this.config.Channels)
+                    foreach (var channel in this.Config.Channels)
                     {
-                        this.session.Join(channel.Name);
+                        this.Session.Join(channel.Name);
                     }
-                    if (!string.IsNullOrWhiteSpace(this.config.NickServServicesName) && !string.IsNullOrWhiteSpace(this.config.NickservPassword))
+                    if (!string.IsNullOrWhiteSpace(this.Config.NickServServicesName) && !string.IsNullOrWhiteSpace(this.Config.NickservPassword))
                     {
-                        this.session.PrivateMessage(new IrcTarget(this.config.NickServServicesName), $"identify {this.config.NickservPassword}");
+                        this.Session.PrivateMessage(new IrcTarget(this.Config.NickServServicesName), $"identify {this.Config.NickservPassword}");
                     }
                 }
             };
+            this.Session.PrivateMessaged += (o, e) =>
+            {
+                this.PrivateMessaged?.Invoke(this, new PrivateMessagedEventArgs(e.From, e.Text));
+            };
+            this.Session.AddHandler(new IrcCodeHandler(e =>
+            {
+                var parts = e.Text.Split(' ');
+                foreach (var part in parts)
+                {
+                    var values = part.Split('=');
+                    if (values[0] == "CHANMODES")
+                    {
+                        this.SupportedChannelModes = values[1];
+                    }
+                }
+                return false;
+            }, IrcCode.RPL_BOUNCE));
         }
 
         public void Open()
         {
-            this.session.Open(this.config.Server, this.config.Port, this.config.IsSecure, this.config.Nickname, this.config.Username, this.config.RealName, true, this.config.Password);
+            this.Session.Open(this.Config.Server, this.Config.Port, this.Config.IsSecure, this.Config.Nickname, this.Config.Username, this.Config.RealName, true, this.Config.Password);
         }
 
         public void Dispose()
         {
-            this.session.Dispose();
+            this.Session.Dispose();
         }
     }
 }

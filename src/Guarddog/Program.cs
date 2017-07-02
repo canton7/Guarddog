@@ -1,4 +1,7 @@
-﻿using Guarddog.IrcClient;
+﻿using Guarddog.Data;
+using Guarddog.Data.Bans;
+using Guarddog.IrcClient;
+using Guarddog.Modules;
 using IrcSays.Communication.Irc;
 using Microsoft.Data.Sqlite;
 using SimpleMigrations;
@@ -14,7 +17,7 @@ namespace Guarddog
     {
         static void Main(string[] args)
         {
-            using (var connection = new SqliteConnection("Data Source=database.sqlite"))
+            using (var connection = new ConnectionFactory().Create())
             {
                 var databaseProvider = new SqliteDatabaseProvider(connection);
                 var migrator = new SimpleMigrator(Assembly.GetEntryAssembly(), databaseProvider, new ConsoleLogger());
@@ -48,6 +51,9 @@ namespace Guarddog
 
             using (var client = new Client(clientConfig))
             {
+                var banRepository = new BanRepository();
+                var akick = new AkickModule(client, client.Channels["#test"], Array.Empty<Channel>(), banRepository);
+
                 client.Open();
 
                 Console.ReadLine();

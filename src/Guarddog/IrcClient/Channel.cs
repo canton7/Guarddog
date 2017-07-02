@@ -8,9 +8,11 @@ namespace Guarddog.IrcClient
 {
     public class Channel
     {
-        private readonly IrcSession session;
-        private readonly ClientConfig clientConfig;
+        private readonly Client client;
         private readonly bool permanentlyOp;
+
+        private bool muteSupported => this.client.SupportedChannelModes.Contains('q');
+        private IrcSession session => this.client.Session;
 
         public string Name { get; }
         public bool IsJoined { get; private set; }
@@ -18,12 +20,16 @@ namespace Guarddog.IrcClient
         private List<UserBan> wipBanList = new List<UserBan>();
         public IReadOnlyList<UserBan> BanList { get; private set; } = new List<UserBan>();
 
-        internal Channel(string name, IrcSession session, ClientConfig clientConfig, ChannelConfig channelConfig)
+        public event EventHandler Joined;
+        public event EventHandler<BanListReloadedEventArgs> BanListReloaded;
+        public event EventHandler<BanChangedEventArgs> BanAdded;
+        public event EventHandler<BanChangedEventArgs> BanRemoved;
+
+        internal Channel(string name, Client client, ChannelConfig channelConfig)
         {
             this.Name = name ?? throw new ArgumentNullException(nameof(name));
-            this.session = session ?? throw new ArgumentNullException(nameof(session));
-            this.clientConfig = clientConfig ?? throw new ArgumentNullException(nameof(clientConfig));
-            this.permanentlyOp = channelConfig.PermanentlyOp ?? clientConfig.PermanentlyOp;
+            this.client = client ?? throw new ArgumentNullException(nameof(client));
+            this.permanentlyOp = channelConfig.PermanentlyOp ?? this.client.Config.PermanentlyOp;
 
             this.session.SelfJoined += (o, e) =>
             {
@@ -59,70 +65,93 @@ namespace Guarddog.IrcClient
                         }
                         else if (mode.Mode == 'b' || mode.Mode == 'q')
                         {
-                            var type = mode.Mode == 'b' ? UserBanType.Ban : UserBanType.Mute;
                             var newBanList = new List<UserBan>(this.BanList);
+                            Action eventRaiser = null;
                             if (mode.Set)
                             {
-                                newBanList.Add(new UserBan(mode.Parameter, e.Who.Prefix, DateTime.UtcNow, type));
+                                var ban = new UserBan(mode.Parameter, e.Who.Prefix, DateTime.UtcNow, mode.Mode);
+                                newBanList.Add(ban);
+                                eventRaiser = () => this.BanAdded?.Invoke(this, new BanChangedEventArgs(ban));
                             }
                             else
                             {
-                                newBanList.RemoveAll(x => x.Mask == mode.Parameter && x.Type == type);
+                                var toRemove = newBanList.FirstOrDefault(x => x.Mask == mode.Parameter && x.Type == mode.Mode);
+                                if (toRemove != null)
+                                {
+                                    newBanList.Remove(toRemove);
+                                    eventRaiser = () => this.BanRemoved?.Invoke(this, new BanChangedEventArgs(toRemove));
+                                }
                             }
                             this.BanList = newBanList;
+                            eventRaiser?.Invoke();
                         }
                     }
                 }
             };
+
+            // These 4 form a chain - we always request bans, and when they finish we request mutes (if supported_
             this.session.AddHandler(new IrcCodeHandler(e =>
             {
                 var parameters = e.Message.Parameters;
                 if (parameters[1] == this.Name)
                 {
-                    var ban = new UserBan(parameters[2], parameters[3], DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(parameters[4])).DateTime, UserBanType.Ban);
+                    var ban = new UserBan(parameters[2], parameters[3], DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(parameters[4]) * 1000).DateTime, 'b');
                     this.wipBanList.Add(ban);
                 }
-
                 return false;
             }, IrcCode.RPL_BANLIST));
             this.session.AddHandler(new IrcCodeHandler(e =>
             {
                 if (e.Message.Parameters[1] == this.Name)
                 {
-                    this.BanList = this.wipBanList.Concat(this.BanList.Where(x => x.Type == UserBanType.Mute)).ToList();
-                    this.wipBanList = new List<UserBan>();
+                    if (this.muteSupported)
+                    {
+                        this.session.Mode(this.Name, "+q");
+                    }
+                    else
+                    {
+                        this.BanList = this.wipBanList;
+                        this.wipBanList = new List<UserBan>();
+                        this.BanListReloaded?.Invoke(this, new BanListReloadedEventArgs(this.BanList));
+                    }
                 }
                 return false;
             }, IrcCode.RPL_ENDOFBANLIST));
-            this.session.AddHandler(new IrcCodeHandler(e =>
+
+            if (this.muteSupported)
             {
-                var parameters = e.Message.Parameters;
-                if (parameters[1] == this.Name && parameters[2] == "q")
+                this.session.AddHandler(new IrcCodeHandler(e =>
                 {
-                    var ban = new UserBan(parameters[3], parameters[4], DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(parameters[5])).DateTime, UserBanType.Mute);
-                    this.wipBanList.Add(ban);
-                }
-                return false;
-            }, IrcCode.RPL_MUTELIST));
-            this.session.AddHandler(new IrcCodeHandler(e =>
-            {
-                if (e.Message.Parameters[1] == this.Name && e.Message.Parameters[2] == "q")
+                    var parameters = e.Message.Parameters;
+                    if (parameters[1] == this.Name && parameters[2] == "q")
+                    {
+                        var ban = new UserBan(parameters[3], parameters[4], DateTimeOffset.FromUnixTimeMilliseconds(long.Parse(parameters[5])).DateTime, 'q');
+                        this.wipBanList.Add(ban);
+                    }
+                    return false;
+                }, (IrcCode)728));
+                this.session.AddHandler(new IrcCodeHandler(e =>
                 {
-                    this.BanList = this.wipBanList.Concat(this.BanList.Where(x => x.Type == UserBanType.Ban)).ToList();
-                    this.wipBanList = new List<UserBan>();
-                }
-                return false;
-            }, IrcCode.RPL_ENDOFMUTELIST));
+                    if (e.Message.Parameters[1] == this.Name && e.Message.Parameters[2] == "q")
+                    {
+                        this.BanList = this.wipBanList;
+                        this.wipBanList = new List<UserBan>();
+                        this.BanListReloaded?.Invoke(this, new BanListReloadedEventArgs(this.BanList));
+                    }
+                    return false;
+                }, (IrcCode)729));
+            }
         }
 
         private void OnJoined()
         {
             this.session.Mode(this.Name, "+b");
-            this.session.Mode(this.Name, "+q");
-            if (!string.IsNullOrWhiteSpace(this.clientConfig.ChanServServicesName) && this.permanentlyOp)
+            if (!string.IsNullOrWhiteSpace(this.client.Config.ChanServServicesName) && this.permanentlyOp)
             {
-                this.session.PrivateMessage(new IrcTarget(this.clientConfig.ChanServServicesName), $"OP {this.Name}");
+                this.session.PrivateMessage(new IrcTarget(this.client.Config.ChanServServicesName), $"OP {this.Name}");
             }
+
+            this.Joined?.Invoke(this, EventArgs.Empty);
         }
     }
 }
