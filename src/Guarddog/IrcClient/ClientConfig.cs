@@ -18,5 +18,7 @@ namespace Guarddog.IrcClient
         public string NickServServicesName { get; set; } = "NickServ";
         public string NickservPassword { get; set; }
         public bool PermanentlyOp { get; set; }
+        public List<string> CommandPrefixes { get; } = new List<string>() { "!", "." };
+        public bool RequireCommandPrefixInPrivmsg { get; set; } = false;
     }
 }

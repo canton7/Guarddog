@@ -8,61 +8,40 @@ using System.Text;
 
 namespace Guarddog.Modules.Akick
 {
-    public class AkickModule
+    public class AkickModule : IModule, IDisposable
     {
-        private readonly Client client;
-        private readonly Channel opChannel;
-        private readonly IReadOnlyList<Channel> adminChannels;
-        private readonly BanRepository banRepository;
+        public IReadOnlyList<AkickModuleChannel> Channels { get; }
 
-        public AkickModule(Client client, List<AkickModuleChannelConfig> config, BanRepository banRepository)
+        public AkickModule(Client client, AKickModuleConfig config, BanRepository banRepository)
         {
-            this.client = client ?? throw new ArgumentNullException(nameof(client));
-            this.opChannel = opChannel ?? throw new ArgumentNullException(nameof(opChannel));
-            this.adminChannels = adminChannels ?? throw new ArgumentNullException(nameof(adminChannels));
-            this.banRepository = banRepository ?? throw new ArgumentNullException(nameof(banRepository));
-
-            this.opChannel.BanListReloaded += this.BanListReloaded;
-            this.opChannel.BanAdded += this.BanAdded;
-            this.opChannel.BanRemoved += this.BanRemoved;
-
-            foreach (var adminChannel in this.adminChannels)
+            var channels = new List<AkickModuleChannel>();
+            foreach (var channelConfig in config.Channels)
             {
-                adminChannel.Messaged += this.AdminChannelMessaged;
+                channels.Add(new AkickModuleChannel(client, config, channelConfig, banRepository));
+            }
+
+            this.Channels = channels;
+        }
+
+        public void Load()
+        {
+            foreach (var channel in this.Channels)
+            {
+                channel.Load();
             }
         }
 
-        private void BanListReloaded(object sender, BanListReloadedEventArgs e)
+        public void Unload()
         {
-            var banList = e.BanList;
-
-            this.banRepository.InsertBans(banList.Select(this.BanToBanRecord));
-        }
-
-        private void BanAdded(object sender, BanChangedEventArgs e)
-        {
-            this.banRepository.InsertBans(new[] { this.BanToBanRecord(e.Ban) });
-        }
-
-        private void BanRemoved(object sender, BanChangedEventArgs e)
-        {
-            this.banRepository.DeleteBan(this.BanToBanRecord(e.Ban));
-        }
-
-        private BanRecord BanToBanRecord(UserBan ban)
-        {
-            return new BanRecord()
+            foreach (var channel in this.Channels)
             {
-                Channel = this.opChannel.Name,
-                Mask = ban.Mask,
-                FromUser = ban.From,
-                Date = ban.Date,
-                Type = ban.Type,
-            };
+                channel.Unload();
+            }
         }
 
-        private void AdminChannelMessaged(object sender, MessagedEventArgs e)
+        public void Dispose()
         {
+            this.Unload();
         }
     }
 }

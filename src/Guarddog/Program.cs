@@ -9,6 +9,7 @@ using SimpleMigrations;
 using SimpleMigrations.Console;
 using SimpleMigrations.DatabaseProvider;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
@@ -49,12 +50,26 @@ namespace Guarddog
                     new ChannelConfig() { Name = "#admin" },
                 },
                 NickservPassword = "nickservpassword",
+                RequireCommandPrefixInPrivmsg = true,
             };
 
             using (var client = new Client(clientConfig))
             {
                 var banRepository = new BanRepository();
-                var akick = new AkickModule(client, client.Channels["#test"], new[] { client.Channels["#admin"] }, banRepository);
+                var aKickModuleConfig = new AKickModuleConfig()
+                {
+                    Channels =
+                    {
+                        new AkickModuleChannelConfig()
+                        {
+                            OpChannel = client.Channels["#test"],
+                            AdminChannels = { client.Channels["#admin"] },
+                        },
+                    }
+                };
+
+                var akick = new AkickModule(client, aKickModuleConfig, banRepository);
+                akick.Load();
 
                 client.Open();
 

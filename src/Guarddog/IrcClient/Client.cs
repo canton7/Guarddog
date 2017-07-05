@@ -17,6 +17,8 @@ namespace Guarddog.IrcClient
 
         public event EventHandler<MessagedEventArgs> PrivateMessaged;
 
+        private readonly CommandRegistrationManager commandRegistrationManager;
+
         public Client(ClientConfig config)
         {
             this.Config = config ?? throw new ArgumentNullException(nameof(config));
@@ -24,6 +26,8 @@ namespace Guarddog.IrcClient
             this.Session = new IrcSession();
 
             this.Channels = this.Config.Channels.ToDictionary(x => x.Name, x => new Channel(x.Name, this, x));
+
+            this.commandRegistrationManager = new CommandRegistrationManager(this.Config.CommandPrefixes, this.Config.RequireCommandPrefixInPrivmsg);
 
             this.Session.RawMessageReceived += (o, e) => Console.WriteLine("<< " + e.Message);
             this.Session.RawMessageSent += (o, e) => Console.WriteLine(">> " + e.Message);
@@ -49,7 +53,13 @@ namespace Guarddog.IrcClient
             this.Session.PrivateMessaged += (o, e) =>
             {
                 if (!e.To.IsChannel && e.To.Name == this.Config.Nickname)
+                {
                     this.PrivateMessaged?.Invoke(this, new MessagedEventArgs(e.From, e.Text));
+
+                    var response = this.commandRegistrationManager.TryDispatchCommand(e.From, e.Text);
+                    if (response != null)
+                        this.Session.PrivateMessage(new IrcTarget(e.From), response);
+                }
             };
             this.Session.AddHandler(new IrcCodeHandler(e =>
             {
@@ -70,6 +80,9 @@ namespace Guarddog.IrcClient
         {
             this.Session.Open(this.Config.Server, this.Config.Port, this.Config.IsSecure, this.Config.Nickname, this.Config.Username, this.Config.RealName, true, this.Config.Password);
         }
+
+        public void AddPrivateMessageHandler(CommandRegistration registration) => this.commandRegistrationManager.Add(registration);
+        public void RemovePrivateMessageHandler(CommandRegistration registration) => this.commandRegistrationManager.Remove(registration);
 
         public void Dispose()
         {

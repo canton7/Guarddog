@@ -20,6 +20,8 @@ namespace Guarddog.IrcClient
         private List<UserBan> wipBanList = new List<UserBan>();
         public IReadOnlyList<UserBan> BanList { get; private set; } = new List<UserBan>();
 
+        private readonly CommandRegistrationManager commandRegistrationManager;
+
         public event EventHandler Joined;
         public event EventHandler<BanListReloadedEventArgs> BanListReloaded;
         public event EventHandler<BanChangedEventArgs> BanAdded;
@@ -31,6 +33,8 @@ namespace Guarddog.IrcClient
             this.Name = name ?? throw new ArgumentNullException(nameof(name));
             this.client = client ?? throw new ArgumentNullException(nameof(client));
             this.permanentlyOp = channelConfig.PermanentlyOp ?? this.client.Config.PermanentlyOp;
+
+            this.commandRegistrationManager = new CommandRegistrationManager(client.Config.CommandPrefixes, requirePrefix: true);
 
             this.session.SelfJoined += (o, e) =>
             {
@@ -57,7 +61,13 @@ namespace Guarddog.IrcClient
             this.session.PrivateMessaged += (o, e) =>
             {
                 if (e.To.IsChannel && e.To.Name == this.Name)
+                {
                     this.Messaged?.Invoke(this, new MessagedEventArgs(e.From, e.Text));
+
+                    var response = this.commandRegistrationManager.TryDispatchCommand(e.From, e.Text);
+                    if (response != null)
+                        this.client.Session.PrivateMessage(e.To, response);
+                }
             };
             this.session.ChannelModeChanged += (o, e) =>
             {
@@ -159,5 +169,8 @@ namespace Guarddog.IrcClient
 
             this.Joined?.Invoke(this, EventArgs.Empty);
         }
+
+        public void AddPrivateMessageHandler(CommandRegistration registration) => this.commandRegistrationManager.Add(registration);
+        public void RemovePrivateMessageHandler(CommandRegistration registration) => this.commandRegistrationManager.Remove(registration);
     }
 }
